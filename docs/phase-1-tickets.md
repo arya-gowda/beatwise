@@ -3,8 +3,38 @@
 Durable copy of the Phase 1 ticket list. The in-session task list does not survive a
 restart; this file does. Re-create tasks from these entries after restarting.
 
-**Status: 1–4 done and on `main`. Next unblocked: #5 (lasso), #6 (Spotify auth) — those
-two can run in parallel. #7 is the gate ticket.**
+**Status as of 2026-08-02:**
+
+- **P1-01..04 — done and on `main`.**
+- **P1-05 (lasso) — DONE, verified in browser, committed `a85bbc8`.** Geometry proven
+  rather than assumed (project/unproject round trip to 8.9e-16; a 4,000-point
+  screen-vs-world agreement test finds zero mismatches, so `flipY:false` is not silently
+  mirroring the selection). Three bugs found in review and fixed: the sticky lasso toggle
+  overwrote the selection on the next pan; Escape did not abort an in-flight drag and the
+  drag then repopulated what Escape had just cleared; `pointercancel` committed a partial
+  shape instead of discarding it.
+- **P1-06 (Spotify auth) — built, UNCOMMITTED, never met Spotify.** Pure-browser PKCE,
+  refresh token in `localStorage`, FastAPI deliberately not involved — see
+  `docs/decisions/0003-spotify-auth.md`. Logic verified against a stubbed Spotify (96
+  checks) and the S256 challenge against the RFC 7636 test vector, but the real handshake
+  has not been run. Client id is set in `web/.env.local` (gitignored via
+  `web/.gitignore`'s `*.local` — the root `.gitignore` would NOT have caught it).
+  Mounted via `main.tsx`, so `App.tsx` is untouched.
+- **P1-10 (parse genres) — in progress.**
+- Committed since `adeb0c3`: `a85bbc8` only. All of P1-06 is still working-tree state.
+
+**OPEN QUESTION carried into P1-06 sign-off:** whether `GET /v1/me` returns 200 with only
+the two playlist scopes. The reference page lists `user-read-private` / `user-read-email`
+under an "Authorization scopes" heading that reads as an endpoint requirement, while the
+per-field notes read as conditional — "the field is unscoped" and "the endpoint is
+unscoped" are not the same claim, and we are relying on the weaker one. If the first real
+connect 403s, add `user-read-private` to `SCOPES` in `web/src/spotify/config.ts`. One line.
+
+Two standing gotchas worth not rediscovering: use `env/bin/python`, never the system
+anaconda (no `umap`, stale scikit-learn, gives four confusing test failures); and open
+the app at `http://127.0.0.1:5173`, never `localhost` — Spotify forbids `localhost` as a
+redirect URI and the two are separate browser origins, so the PKCE verifier written
+before the redirect is unreadable after it.
 
 Workflow per ticket: feature branch → granular commits → squash → rebase onto `main` → push.
 
@@ -90,6 +120,17 @@ PM CALLS ON THINGS THE CONCEPT DOC LEAVES OPEN:
   and must not be quietly invented here.
 - Visibility: private by default.
 
+ENDPOINT CHANGE — CONFIRM BEFORE WRITING THIS: the February 2026 changelog deprecates
+`POST /playlists/{id}/tracks` in favour of `POST /playlists/{id}/items`, and renames the
+response field `tracks` → `items`. That is this ticket's core call. Verify against the
+live docs first; do not write against remembered endpoint names. Related: the same
+changelog was the source of a claim about identity scopes that turned out to contradict
+the reference pages, so corroborate it rather than trusting it alone.
+
+EXPORT FROM THE SELECTION, NOT THE PANEL: `SelectionPanel` caps rendering at 300 rows.
+The underlying `selected` set and the `chosen` array in `MapCanvas` are never truncated.
+Wire the button to those, or exports silently cap at 300.
+
 ACCEPTANCE CRITERIA:
 - Track count in Spotify equals the selection count. No silent drops.
 - Selections over 100 tracks chunked correctly across add-items calls.
@@ -169,6 +210,10 @@ ACCEPTANCE CRITERIA:
 - 314 unique tokens after normalisation, 106 singletons.
 - Plain comma split, normalisation applied anyway. Measured clean today; a property of
   this export, not a guarantee.
+- VERIFIED 2026-08-02: the comma split is correct *for this column*. `Genres` has 628
+  comma-bearing rows and ZERO semicolon-bearing rows. The semicolon bug fixed in
+  `ml/data.py` (`5533a94`) is confined to `Artist Name(s)` — 484 semicolon rows, and 27
+  rows whose commas sit *inside* one artist name — and does not extend here.
 - `genre_status` is `native` for 1,252 and `unlabelled` for 1,137. Only those two values
   exist in Phase 1.
 - Empty Genres strings produce zero rows, not one row with an empty label.
