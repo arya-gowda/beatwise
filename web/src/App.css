@@ -36,6 +36,129 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Colour-by picker and its key, stacked directly above the readout. Bottom-left is the
+   conventional home for a map legend and the only corner free of the three anchored
+   zones -- the selection panel owns top-right, the account corner top-left, the controls
+   bottom-right. Anchored by `bottom` so the block grows upward and the readout never
+   moves under it. */
+.legend {
+  position: absolute;
+  left: 1rem;
+  bottom: 2.9rem;
+  width: 17rem;
+  padding: 0.55rem 0.7rem 0.6rem;
+  border-radius: 10px;
+  background: rgba(16, 19, 27, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  z-index: 6;
+}
+
+.legend__modes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.legend__title {
+  opacity: 0.45;
+  margin-right: 0.15rem;
+}
+
+.legend__mode {
+  font: inherit;
+  font-size: 0.7rem;
+  color: rgba(230, 232, 238, 0.62);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 0.12rem 0.42rem;
+  cursor: pointer;
+}
+
+.legend__mode:hover { color: #e6e8ee; background: rgba(255, 255, 255, 0.08); }
+
+.legend__mode--on {
+  color: #cdeeff;
+  background: rgba(122, 214, 255, 0.16);
+  border-color: rgba(122, 214, 255, 0.5);
+}
+
+.legend__body { margin-top: 0.5rem; }
+
+.legend__blurb {
+  margin: 0 0 0.4rem;
+  opacity: 0.6;
+  line-height: 1.35;
+}
+
+/* Where the library actually sits on the scale. A bare gradient implies an even spread;
+   90% of these releases are post-2010 and the bar should not pretend otherwise. */
+.legend__density {
+  display: block;
+  width: 100%;
+  height: 16px;
+}
+
+.legend__density rect { fill: rgba(255, 255, 255, 0.22); }
+
+.legend__ramp {
+  height: 9px;
+  margin-top: 2px;
+  border-radius: 2px;
+}
+
+/* Absolute placement, not space-between: on a rank-spaced ramp the labels have to sit at
+   the positions they describe, because the gap between 1954 and 2012 being the same width
+   as the gap between 2022 and 2025 IS the disclosure that the scale is by rank. */
+.legend__ticks {
+  position: relative;
+  height: 1.05em;
+  margin-top: 0.25rem;
+  opacity: 0.55;
+  font-variant-numeric: tabular-nums;
+}
+
+.legend__tick {
+  position: absolute;
+  top: 0;
+  white-space: nowrap;
+}
+
+.legend__note {
+  margin: 0.35rem 0 0;
+  opacity: 0.45;
+  line-height: 1.35;
+}
+
+.legend__keys {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.legend__keys li {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.12rem 0;
+}
+
+.legend__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.legend__count {
+  margin-left: auto;
+  opacity: 0.5;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Hover card. max-width is load-bearing: the real library has titles long enough to
    push an unclamped card off-screen. */
 .tooltip {

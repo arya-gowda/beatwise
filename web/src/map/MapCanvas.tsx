@@ -11,6 +11,10 @@ import { ScatterplotLayer } from '@deck.gl/layers'
 import { bounds, type Point } from './useMapData'
 import Tooltip from './Tooltip'
 import SelectionPanel from './SelectionPanel'
+import Legend from './Legend'
+// Every colour the map draws comes from here, including the interaction states -- one
+// place decides what a dot looks like, so the legend and the layer cannot disagree.
+import { buildScale, pointColour, SELECTED, type ColourMode } from './colour'
 import {
   appendVertex,
   MIN_DRAG_PX,
@@ -21,13 +25,6 @@ import {
 } from './lasso'
 
 const PADDING = 0.9 // leave a margin so edge clusters are not flush against the frame
-
-const UNSELECTED: [number, number, number] = [190, 190, 200]
-// While a selection exists the rest of the library recedes rather than disappearing --
-// context is the whole point of a map, and a selection you cannot place is just a list.
-const DIMMED: [number, number, number] = [88, 91, 104]
-const SELECTED: [number, number, number] = [122, 214, 255]
-const HOVERED: [number, number, number] = [255, 255, 255]
 
 /**
  * Frame the whole cloud.
@@ -77,6 +74,13 @@ export default function MapCanvas({ points, width, height, version }: Props) {
   )
   const [viewState, setViewState] = useState<OrthographicViewState>(home)
   const [hovered, setHovered] = useState<PickingInfo<Point> | null>(null)
+
+  // Colour-by is a lens over the same points, so it is state of its own and touches
+  // nothing else: switching modes cannot move the camera or change the selection, because
+  // neither `viewState` nor `selected` is derived from it.
+  const [mode, setMode] = useState<ColourMode>('off')
+  const scale = useMemo(() => buildScale(points, mode), [points, mode])
+  const colouring = scale.kind !== 'off'
 
   // Armed by the button; Shift is the transient shortcut for the same thing, so the
   // pointer can select without leaving navigate mode.
@@ -186,7 +190,11 @@ export default function MapCanvas({ points, width, height, version }: Props) {
     // cover it: the editable playlist name is an `input`, where pointer capture would
     // break click-to-place-caret and drag-to-select-text outright, and the result is an
     // `a`. Anything natively interactive owns its own pointer.
-    if ((e.target as HTMLElement).closest('button, input, a, textarea, select')) return
+    //
+    // P1-09's legend is listed whole rather than by its buttons: it is a block of chrome
+    // with gaps and a gradient bar between them, and a drag started on the gap would
+    // capture the pointer over a control the user was aiming at.
+    if ((e.target as HTMLElement).closest('button, input, a, textarea, select, .legend')) return
 
     drawing.current = true
     capturedPointer.current = e.pointerId
@@ -239,24 +247,42 @@ export default function MapCanvas({ points, width, height, version }: Props) {
     id: 'tracks',
     data: points,
     getPosition: (d) => [d.x, d.y],
-    getFillColor: (d) => {
-      if (hovered?.object?.uri === d.uri) return HOVERED
-      if (selected.has(d.uri)) return SELECTED
-      return selected.size > 0 ? DIMMED : UNSELECTED
-    },
+    getFillColor: (d) =>
+      pointColour(scale, d, {
+        hovered: hovered?.object?.uri === d.uri,
+        selected: selected.has(d.uri),
+        anySelected: selected.size > 0,
+      }),
     // A selected point sits a little larger as well as brighter. In the dense core colour
-    // alone is not enough to pick a selection out of its neighbours.
-    getRadius: (d) => (selected.has(d.uri) ? 3 : 2),
+    // alone is not enough to pick a selection out of its neighbours. Under a colour mode
+    // it needs slightly more room, because the ring below eats into the fill.
+    getRadius: (d) => (selected.has(d.uri) ? (colouring ? 3.4 : 3) : 2),
     // Radius in pixels, not world units, so points stay legible at every zoom rather
     // than dissolving as you pull back.
     radiusUnits: 'pixels',
     radiusMinPixels: 1.5,
-    opacity: 0.75,
+    // THE SELECTION RING. Under a colour mode the fill has to keep meaning what the
+    // legend says it means, so "selected" cannot be carried by hue -- it is carried by a
+    // constant cyan outline instead, drawn around the point's own colour. deck.gl centres
+    // the stroke on the edge, so a 1.2px ring at radius 3.4 gives an 8px dot with a 5.6px
+    // core of real colour: far enough out a selection reads as a cyan mass exactly as it
+    // did before, and closer in every selected point still says what it is worth. With no
+    // colour mode there is nothing to protect, so the width is 0 -- which the shader
+    // treats as no stroke at all -- and P1-05's solid cyan fill stands unchanged.
+    stroked: true,
+    getLineColor: SELECTED,
+    getLineWidth: (d) => (colouring && selected.has(d.uri) ? 1.2 : 0),
+    lineWidthUnits: 'pixels',
+    // A touch more opaque under a colour mode: hue on a 2-3px dot survives less
+    // translucency than a flat grey does.
+    opacity: colouring ? 0.85 : 0.75,
     pickable: true,
     onHover: (info: PickingInfo<Point>) => setHovered(info.object ? info : null),
+    // Miss one of these and the map keeps the colours of the previous mode.
     updateTriggers: {
-      getFillColor: [hovered?.object?.uri ?? null, selected],
-      getRadius: selected,
+      getFillColor: [hovered?.object?.uri ?? null, selected, mode],
+      getRadius: [selected, mode],
+      getLineWidth: [selected, mode],
     },
   })
 
@@ -324,6 +350,8 @@ export default function MapCanvas({ points, width, height, version }: Props) {
       {/* `chosen`, not anything the panel renders: the panel caps its list at 300 rows
           and the export must see the whole selection. */}
       <SelectionPanel tracks={chosen} onClear={clearSelection} embeddingVersion={version} />
+
+      <Legend mode={mode} scale={scale} onChange={setMode} />
 
       <div className="controls">
         <button
