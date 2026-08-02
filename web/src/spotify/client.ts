@@ -28,7 +28,7 @@ export class SpotifyApiError extends Error {
 /**
  * Call the Spotify Web API with the current access token.
  *
- * @param path a path relative to /v1, e.g. `/me` or `/users/x/playlists`
+ * @param path a path relative to /v1, e.g. `/me` or `/me/playlists`
  */
 export async function spotifyFetch(
   config: SpotifyConfig,

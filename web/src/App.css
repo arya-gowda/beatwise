@@ -174,20 +174,26 @@ body {
   gap: 0.4rem;
 }
 
+/* Ghost treatment, deliberately. These are the panel's two escape hatches; the primary
+   action in this panel is `create playlist` at its base, and the header must not compete
+   with it. */
 .panel__hide,
 .panel__clear {
   font: inherit;
   font-size: 0.72rem;
-  color: #e6e8ee;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: rgba(230, 232, 238, 0.7);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 999px;
   padding: 0.2rem 0.6rem;
   cursor: pointer;
 }
 
 .panel__hide:hover,
-.panel__clear:hover { background: rgba(255, 255, 255, 0.16); }
+.panel__clear:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e6e8ee;
+}
 
 /* Collapsed state: same corner, a fraction of the footprint. Reopens the list; Esc still
    clears the selection outright regardless of collapse state. */
@@ -243,8 +249,94 @@ body {
 }
 
 .panel__more {
+  margin: 0;
+  flex: none; /* the list gives up height, never this line or the CTA below it */
   padding: 0.45rem 0.75rem;
   font-size: 0.72rem;
+  line-height: 1.35;
   opacity: 0.5;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* The base of the panel: the one thing this whole product is for. Anchored below the
+   list, always present while a selection exists, and never a modal -- the map and the
+   selection stay visible while the export runs. */
+.panel__export {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.6rem 0.75rem 0.7rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(122, 214, 255, 0.05);
+}
+
+.panel__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.panel__name {
+  font: inherit;
+  font-size: 0.75rem;
+  color: #e6e8ee;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+  min-width: 0;
+}
+
+.panel__name:focus {
+  outline: none;
+  border-color: rgba(122, 214, 255, 0.6);
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.panel__name:disabled { opacity: 0.5; }
+
+.panel__cta {
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #071019;
+  background: #7ad6ff;
+  border: 1px solid #7ad6ff;
+  border-radius: 6px;
+  padding: 0.45rem 0.6rem;
+  cursor: pointer;
+  transition: background 120ms ease, opacity 120ms ease;
+}
+
+.panel__cta:hover:not(:disabled) { background: #9be2ff; }
+
+/* Only ever true while a request is in flight. A finished export must not latch the
+   button off -- exporting twice is meant to make two playlists. */
+.panel__cta:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.panel__status {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  opacity: 0.6;
+  overflow-wrap: anywhere;
+}
+
+.panel__status--good { opacity: 1; color: #8ee6a8; }
+.panel__status--bad { opacity: 1; color: #ff9d9d; }
+
+/* A link and a reconnect button read as the same affordance, so they look the same. */
+.panel__link {
+  font: inherit;
+  font-size: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  text-decoration: underline;
+  cursor: pointer;
 }

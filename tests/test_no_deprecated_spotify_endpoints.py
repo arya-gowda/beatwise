@@ -13,6 +13,7 @@ That is precisely the boundary the two-layer model exists to hold. A guardrail t
 in CI is a better guard than a paragraph someone has to have read.
 """
 
+import re
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -94,3 +95,68 @@ def test_there_is_exactly_one_door_to_the_spotify_api():
         "Every Spotify request goes through spotifyFetch in web/src/spotify/client.ts, "
         "which is where the deprecated-endpoint guard lives."
     )
+
+
+# --- February 2026 replacements -------------------------------------------------------
+#
+# A different failure from the withdrawals above. These endpoints have a working successor
+# one word away, so the mistake is not reaching for something gone -- it is writing the
+# spelling a decade of tutorials teach and finding out at runtime. Playlist write-back
+# (P1-07) rides on exactly these two paths.
+#
+# Verified against the live reference pages on 2026-08-02, not the changelog alone:
+#   - "Add Items to Playlist" documents POST /playlists/{playlist_id}/items, no banner.
+#   - The /tracks page is titled "Add Items to Playlist [DEPRECATED]" and says
+#     "Deprecated: Use Add Items to Playlist instead."
+#   - "Create Playlist" documents POST /me/playlists; the changelog records
+#     POST /users/{user_id}/playlists as removed in its favour.
+
+WRITE_BACK = WEB_SRC / "spotify" / "playlists.ts"
+
+# Both tolerate a template interpolation in the id position, which is how a real call is
+# written. The `(?!\{)` skips `{playlist_id}` / `{user_id}` -- documentation placeholders,
+# which the comments above and in playlists.ts legitimately contain, and which no fetch
+# could ever resolve. This catches the shape a mistake actually takes; `assertNotDeprecated`
+# in web/src/spotify/deprecated.ts is the backstop for anything assembled at runtime.
+ADD_TO_PLAYLIST_OLD = re.compile(r"/playlists/(?!\{)[^\s\"'`]*/tracks")
+CREATE_PLAYLIST_OLD = re.compile(r"/users/(?!\{)[^\s\"'`]*/playlists")
+
+
+def test_playlist_write_back_uses_the_items_endpoint():
+    """POST /playlists/{id}/items, not the deprecated /tracks."""
+    source = WRITE_BACK.read_text(encoding="utf-8")
+    assert "/items`" in source, (
+        f"{WRITE_BACK.relative_to(REPO)} does not build a /items path -- playlist "
+        "write-back must POST /playlists/{playlist_id}/items"
+    )
+    assert "'/me/playlists'" in source, (
+        f"{WRITE_BACK.relative_to(REPO)} does not POST /me/playlists to create"
+    )
+
+
+def test_replaced_playlist_endpoints_are_not_referenced():
+    offenders = []
+    for path in _sources():
+        if path == DECLARATION:  # it exists to name and block them
+            continue
+        text = path.read_text(encoding="utf-8")
+        if ADD_TO_PLAYLIST_OLD.search(text):
+            offenders.append(f"{path.relative_to(REPO)} builds /playlists/.../tracks")
+        if CREATE_PLAYLIST_OLD.search(text):
+            offenders.append(f"{path.relative_to(REPO)} builds /users/.../playlists")
+
+    assert not offenders, (
+        "Spotify replaced these in February 2026:\n  "
+        + "\n  ".join(offenders)
+        + "\n\nUse POST /playlists/{playlist_id}/items and POST /me/playlists."
+    )
+
+
+def test_the_replacement_guard_still_blocks_both():
+    """Deleting an entry from REPLACED_PATHS would silently disarm the runtime guard."""
+    text = DECLARATION.read_text(encoding="utf-8")
+    assert "REPLACED_PATHS" in text, f"{DECLARATION.relative_to(REPO)} lost REPLACED_PATHS"
+    for expected in (r"\/playlists\/[^/?#]+\/tracks", r"\/users\/[^/?#]+\/playlists"):
+        assert expected in text, (
+            f"{DECLARATION.relative_to(REPO)} no longer blocks {expected!r} at runtime"
+        )

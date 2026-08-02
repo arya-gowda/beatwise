@@ -63,9 +63,13 @@ type Props = {
   points: Point[]
   width: number
   height: number
+  /** Embedding artifact version, carried through so an exported playlist can name the
+   *  map that produced it. A route is only reproducible if you know which space it ran
+   *  through. */
+  version: string
 }
 
-export default function MapCanvas({ points, width, height }: Props) {
+export default function MapCanvas({ points, width, height, version }: Props) {
   const home = useMemo(
     () => fitView(points, width, height),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -176,8 +180,13 @@ export default function MapCanvas({ points, width, height }: Props) {
     // The controls and the selection panel are children of this div, so their clicks
     // bubble here. Without this guard, clicking `clear` while lasso mode is live starts a
     // drag and captures the pointer -- which retargets the pointerup and can swallow the
-    // button's own click. P1-07 puts `Create playlist` in that same subtree.
-    if ((e.target as HTMLElement).closest('button')) return
+    // button's own click.
+    //
+    // P1-07 added two more kinds of target to that subtree, and buttons alone no longer
+    // cover it: the editable playlist name is an `input`, where pointer capture would
+    // break click-to-place-caret and drag-to-select-text outright, and the result is an
+    // `a`. Anything natively interactive owns its own pointer.
+    if ((e.target as HTMLElement).closest('button, input, a, textarea, select')) return
 
     drawing.current = true
     capturedPointer.current = e.pointerId
@@ -312,7 +321,9 @@ export default function MapCanvas({ points, width, height }: Props) {
 
       {hovered?.object && !lassoMode && <Tooltip info={hovered} />}
 
-      <SelectionPanel tracks={chosen} onClear={clearSelection} />
+      {/* `chosen`, not anything the panel renders: the panel caps its list at 300 rows
+          and the export must see the whole selection. */}
+      <SelectionPanel tracks={chosen} onClear={clearSelection} embeddingVersion={version} />
 
       <div className="controls">
         <button

@@ -37,7 +37,7 @@ export default function App() {
   const { data } = map
   return (
     <>
-      <MapCanvas points={data.points} width={width} height={height} />
+      <MapCanvas points={data.points} width={width} height={height} version={data.version} />
       <div className="readout">
         {data.points.length.toLocaleString()} tracks · {data.version}
       </div>
