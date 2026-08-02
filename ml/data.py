@@ -36,11 +36,25 @@ def load_labelled(csv_path="Liked_Songs.csv"):
     df["genres"] = df["genres_raw"].apply(
         lambda v: list(dict.fromkeys(t.strip().lower() for t in v.split(",") if t.strip()))
     )
-    df["artist"] = (
-        df["Artist Name(s)"].fillna("").astype(str).str.split(",").str[0].str.strip()
-    )
-
+    df = _artists(df)
     df = df.dropna(subset=BASE_FEATURES + ["Key"]).reset_index(drop=True)
+    return df
+
+
+def _artists(df):
+    """Split multi-artist credits.
+
+    Spotify exports these SEMICOLON-separated ("Consequence;Kanye West"). Splitting on
+    a comma instead — as this module originally did — leaves the whole string as one
+    composite name, so a track by "Daniel Caesar" and one by "Daniel Caesar;John Mayer"
+    look like different artists. Measured consequence: 2,094 of 4,208 genre-overlapping
+    same-artist pairs, half of them, went unmasked into the training objective.
+    """
+    raw = df["Artist Name(s)"].fillna("").astype(str)
+    df["artists"] = raw.apply(
+        lambda v: [a.strip() for a in v.split(";") if a.strip()]
+    )
+    df["artist"] = df["artists"].apply(lambda a: a[0] if a else "")
     return df
 
 
@@ -123,16 +137,56 @@ def genre_targets(df, min_count=2):
 
 
 def mask_same_artist(df):
-    """False where two tracks share an artist -- those pairs are excluded everywhere.
+    """False where two tracks share ANY artist -- those pairs are excluded everywhere.
 
     Artist-level genres make same-artist pairs perfect positives for free. Left in,
-    they are the easiest signal available and the model learns artist identity.
+    they are the easiest signal available and the model learns artist identity rather
+    than genre.
+
+    Sharing *any* credited artist counts, not merely the primary one: a solo track and
+    a collaboration by the same person carry identical genre labels, so the pair is
+    just as leaky as two solo tracks.
     """
-    a = df["artist"].to_numpy()
-    same = a[:, None] == a[None, :]
-    mask = ~same
+    names = sorted({a for row in df["artists"] for a in row})
+    index = {a: i for i, a in enumerate(names)}
+    M = np.zeros((len(df), len(names)), dtype=bool)
+    for i, row in enumerate(df["artists"]):
+        for a in row:
+            M[i, index[a]] = True
+
+    shares = (M.astype(np.int16) @ M.astype(np.int16).T) > 0
+    mask = ~shares
     np.fill_diagonal(mask, False)
     return mask
+
+
+def artist_groups(df):
+    """Group id per track, where any two tracks sharing an artist land in one group.
+
+    Grouping on the primary artist alone still leaks: a collaboration can put the same
+    person on both sides of a split. Connected components over the artist co-occurrence
+    graph closes that, so a fold boundary never cuts through a shared credit.
+    """
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+
+    names = sorted({a for row in df["artists"] for a in row})
+    index = {a: i for i, a in enumerate(names)}
+    rows, cols = [], []
+    for i, row in enumerate(df["artists"]):
+        for a in row:
+            rows.append(i)
+            cols.append(index[a])
+    # Bipartite tracks <-> artists; components link tracks through shared credits.
+    n, m = len(df), len(names)
+    inc = coo_matrix((np.ones(len(rows)), (rows, cols)), shape=(n, m))
+    big = coo_matrix(
+        (np.concatenate([inc.data, inc.data]),
+         (np.concatenate([inc.row, inc.col + n]), np.concatenate([inc.col + n, inc.row]))),
+        shape=(n + m, n + m),
+    )
+    _, labels = connected_components(big, directed=False)
+    return labels[:n]
 
 
 def grouped_folds(df, n_splits=5, seed=42):
@@ -141,4 +195,4 @@ def grouped_folds(df, n_splits=5, seed=42):
 
     gkf = GroupKFold(n_splits=n_splits)
     idx = np.arange(len(df))
-    return list(gkf.split(idx, groups=df["artist"].to_numpy()))
+    return list(gkf.split(idx, groups=artist_groups(df)))
