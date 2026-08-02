@@ -13,7 +13,9 @@ restart; this file does. Re-create tasks from these entries after restarting.
   overwrote the selection on the next pan; Escape did not abort an in-flight drag and the
   drag then repopulated what Escape had just cleared; `pointercancel` committed a partial
   shape instead of discarding it.
-- **P1-06 (Spotify auth) — built, UNCOMMITTED, never met Spotify.** Pure-browser PKCE,
+- **P1-06 (Spotify auth) — DONE, committed `2d7351d`, live connect verified 2026-08-02.**
+  Still unobserved: token refresh on expiry (needs an hour to occur naturally) and
+  disconnect. Pure-browser PKCE,
   refresh token in `localStorage`, FastAPI deliberately not involved — see
   `docs/decisions/0003-spotify-auth.md`. Logic verified against a stubbed Spotify (96
   checks) and the S256 challenge against the RFC 7636 test vector, but the real handshake
@@ -30,12 +32,20 @@ restart; this file does. Re-create tasks from these entries after restarting.
 - **Next unblocked: P1-07** (needs a live Spotify connect first, see above), **P1-09**
   (post-gate by design), **P1-11**, **P1-13**, **P1-14** (optional).
 
-**OPEN QUESTION carried into P1-06 sign-off:** whether `GET /v1/me` returns 200 with only
-the two playlist scopes. The reference page lists `user-read-private` / `user-read-email`
-under an "Authorization scopes" heading that reads as an endpoint requirement, while the
-per-field notes read as conditional — "the field is unscoped" and "the endpoint is
-unscoped" are not the same claim, and we are relying on the weaker one. If the first real
-connect 403s, add `user-read-private` to `SCOPES` in `web/src/spotify/config.ts`. One line.
+**RESOLVED 2026-08-02 — `GET /v1/me` returns 200 with only the two playlist scopes.** The
+reference page lists `user-read-private` / `user-read-email` under an "Authorization
+scopes" heading that reads as an endpoint requirement, while the per-field notes read as
+conditional. We relied on the weaker claim — that `display_name` is unscoped rather than
+the endpoint being unscoped — and a real connect confirmed it. `SCOPES` stays at exactly
+two. Do not add identity scopes back; they buy nothing and widen what an exfiltrated
+refresh token can do (0003).
+
+**SETUP GOTCHA, cost a debugging round:** the registered redirect URI must be
+`http://127.0.0.1:5173/` — the app has no `/callback` route. `session.ts` reads `code` and
+`state` off whatever URL it loads on and then scrubs them, and Vite serves the SPA at the
+root. Spotify matches the string EXACTLY, so the trailing slash is load-bearing and
+`http://127.0.0.1:5173` is a different registration that fails with
+"redirect_uri: Not matching configuration".
 
 Two standing gotchas worth not rediscovering: use `env/bin/python`, never the system
 anaconda (no `umap`, stale scikit-learn, gives four confusing test failures); and open
