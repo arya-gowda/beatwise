@@ -1,7 +1,11 @@
-pandas==2.3.3
+fastapi==0.141.1
+joblib==1.5.3
 numpy==2.3.5
-umap-learn==0.5.9.post2
-scikit-learn==1.8.0
+pandas==2.3.3
 plotly==6.5.0
+pytest==9.1.1
+scikit-learn==1.8.0
 scipy==1.16.3
 torch==2.13.0
+umap-learn==0.5.9.post2
+uvicorn==0.52.1
