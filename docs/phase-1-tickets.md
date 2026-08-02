@@ -27,10 +27,29 @@ restart; this file does. Re-create tasks from these entries after restarting.
   data lives in `artifacts/genres/<version>/` on its own version line — see
   `docs/decisions/0004-genre-artifact.md` — so a genre change can never oblige a re-fit.
   `GET /genres` added for P1-12.
-- Everything through P1-10 is committed: `a85bbc8`, `b9d5354`, `2d7351d`, `cfd34fc`.
-  Working tree is clean.
-- **Next unblocked: P1-07** (needs a live Spotify connect first, see above), **P1-09**
-  (post-gate by design), **P1-11**, **P1-13**, **P1-14** (optional).
+- **P1-07 (playlist export) — DONE, committed `8622548`, real playlist created and
+  verified 2026-08-02.** TWO endpoints had moved and both would have failed identically:
+  `POST /playlists/{id}/items` (the `/tracks` spelling is deprecated) and
+  `POST /me/playlists` (`/users/{user_id}/playlists` is REMOVED — the ticket did not flag
+  this one). Both confirmed against the reference pages, not the changelog alone.
+- **P1-11 (macro genres) — DONE, committed `c9379d7`.** 314 tokens → 12 families, zero
+  unmapped, cross-checked independently against the CSV. Multi-macro measured at **177,
+  not the ticket's 184** — that figure is a property of the mapping, not of the data, so
+  it could not be verified independently of the curation. Sensitivity measured (moving
+  `indie` alone Rock→Pop gives 215) and 177 pinned with the reasoning rather than nudging
+  a token to hit the expected number. See `docs/decisions/0005-macro-genre-taxonomy.md`.
+- Committed: `a85bbc8`, `b9d5354`, `2d7351d`, `cfd34fc`, `a300f33`, `f3b4d82`, `8622548`,
+  `c9379d7`. Suite green at 55 tests.
+
+**NEXT: P1-08 is the gate, and it is not a code ticket.** Everything Phase 1 needs to run
+it now exists. Lasso → playlist works end to end. The remaining question is whether the
+regions are coherent to the ear, which only listening answers.
+
+**Carried into P1-12 from P1-11's curation:** four families are under 2% of labelled
+tracks (Reggae 7, Stage & Screen 12, Folk/Country 15, Holiday 23). At 2–3px in the dense
+core they will be effectively invisible. P1-12 says "if 12–15 colours aren't
+distinguishable, the macro count is the problem" — the honest version is that the TAIL is
+the problem, and the fix is probably a legend that admits it rather than a merge.
 
 **RESOLVED 2026-08-02 — `GET /v1/me` returns 200 with only the two playlist scopes.** The
 reference page lists `user-read-private` / `user-read-email` under an "Authorization
