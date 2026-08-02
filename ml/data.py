@@ -41,19 +41,29 @@ def load_labelled(csv_path="Liked_Songs.csv"):
     return df
 
 
-def _artists(df):
-    """Split multi-artist credits.
+def split_artists(value):
+    """Split one `Artist Name(s)` cell into credited artist names.
 
     Spotify exports these SEMICOLON-separated ("Consequence;Kanye West"). Splitting on
     a comma instead — as this module originally did — leaves the whole string as one
     composite name, so a track by "Daniel Caesar" and one by "Daniel Caesar;John Mayer"
     look like different artists. Measured consequence: 2,094 of 4,208 genre-overlapping
-    same-artist pairs, half of them, went unmasked into the training objective.
+    same-artist pairs, half of them, went unmasked into the training objective. 27 rows
+    also carry a comma *inside* a single name ("Tyler, The Creator"), which a comma split
+    would cut in half.
+
+    Public because it is the ONLY artist splitter in the repo and callers outside this
+    module need it — see diagnostics/genre_gap_at_source.py. `Genres` in the same file is
+    comma-separated and has its own splitter in pipeline/genres.py; one column's
+    convention does not generalise to the next.
     """
+    return [a.strip() for a in str(value).split(";") if a.strip()]
+
+
+def _artists(df):
+    """Attach the split credits and the primary artist to a frame."""
     raw = df["Artist Name(s)"].fillna("").astype(str)
-    df["artists"] = raw.apply(
-        lambda v: [a.strip() for a in v.split(";") if a.strip()]
-    )
+    df["artists"] = raw.apply(split_artists)
     df["artist"] = df["artists"].apply(lambda a: a[0] if a else "")
     return df
 
