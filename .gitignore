@@ -211,3 +211,10 @@ node_modules/
 .DS_Store
 web/dist/
 artifacts/
+
+# Local configuration. The `.env` pattern above matches only files named exactly `.env`,
+# so Vite's `.env.local` / `.env.*.local` need saying explicitly. `.env.example` is
+# deliberately NOT ignored -- it is the documentation for what has to be set.
+.env.local
+.env.*.local
+!.env.example

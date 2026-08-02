@@ -1,0 +1,76 @@
+/* Account corner. Kept in its own file so it does not collide with App.css, which the
+   map work owns. Top-LEFT deliberately: the selection panel holds the top-right. */
+
+.account {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  max-width: 22rem;
+  font-size: 0.78rem;
+}
+
+.account__label {
+  opacity: 0.55;
+  letter-spacing: 0.02em;
+}
+
+.account__name {
+  font-weight: 600;
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account__avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.account__avatar--blank {
+  display: inline-block;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.account__button {
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.72rem;
+  color: #e6e8ee;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.account__button:hover { background: rgba(255, 255, 255, 0.14); }
+
+.account__button--primary {
+  background: rgba(122, 214, 255, 0.18);
+  border-color: rgba(122, 214, 255, 0.55);
+  color: #cdeeff;
+}
+
+.account__button--primary:hover { background: rgba(122, 214, 255, 0.28); }
+
+/* Setup and auth failures are developer-facing and worth reading in full, so this wraps
+   rather than truncating. */
+.account__detail {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  opacity: 0.6;
+}
+
+.account--problem .account__label { color: #ff9f6b; opacity: 0.9; }
+.account__detail a { color: #7ad6ff; }
