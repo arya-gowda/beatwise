@@ -20,8 +20,15 @@ restart; this file does. Re-create tasks from these entries after restarting.
   has not been run. Client id is set in `web/.env.local` (gitignored via
   `web/.gitignore`'s `*.local` — the root `.gitignore` would NOT have caught it).
   Mounted via `main.tsx`, so `App.tsx` is untouched.
-- **P1-10 (parse genres) — in progress.**
-- Committed since `adeb0c3`: `a85bbc8` only. All of P1-06 is still working-tree state.
+- **P1-10 (parse genres) — DONE, committed `cfd34fc`.** All twelve acceptance figures
+  reproduced exactly and were independently recomputed rather than taken on trust. Genre
+  data lives in `artifacts/genres/<version>/` on its own version line — see
+  `docs/decisions/0004-genre-artifact.md` — so a genre change can never oblige a re-fit.
+  `GET /genres` added for P1-12.
+- Everything through P1-10 is committed: `a85bbc8`, `b9d5354`, `2d7351d`, `cfd34fc`.
+  Working tree is clean.
+- **Next unblocked: P1-07** (needs a live Spotify connect first, see above), **P1-09**
+  (post-gate by design), **P1-11**, **P1-13**, **P1-14** (optional).
 
 **OPEN QUESTION carried into P1-06 sign-off:** whether `GET /v1/me` returns 200 with only
 the two playlist scopes. The reference page lists `user-read-private` / `user-read-email`
@@ -225,6 +232,21 @@ COMMIT: `feat(genre): parse CSV genres into per-label schema with track rollups`
 
 A data ticket, ~1 hour of hand review (§8.3). Hand curation is the only approach where a
 macro label can be explained by pointing at a row.
+
+DO NOT PUT THE TABLE UNDER `artifacts/`. That directory is gitignored, correctly, because
+everything in it is a derived build output. The micro→macro table is hand-curated SOURCE
+data — an hour of irreplaceable human judgement that is one `git clean` from gone if it
+lands there. Give it a committed home, e.g. `data/genre_macro_map.json`.
+
+NORMALISATION IS ALREADY NFKC-COMPOSED (P1-10). 14 of the 314 tokens are non-ASCII
+(`sierreño`, `música mexicana`, `variété française`, `russelåter`…). Curate against the
+composed forms `pipeline.genres` emits — a decomposed accent is a different string with an
+identical glyph, so it would appear as a 315th token that no hand-curation can match and
+nobody can see is wrong. `vocabulary.json` in the genre artifact lists all 314 with
+`track_count` and `first_count`; curate from that file, not from a fresh CSV scrape.
+
+MAX 14 LABELS ON ONE TRACK, so the §8.6 precedence chain matters — it is implemented in
+`primary_sort_key` already.
 
 ACCEPTANCE CRITERIA:
 - All 314 tokens mapped. Zero unmapped, including the 106 singletons.
