@@ -46,3 +46,31 @@ def get_map(version: str | None = None):
         }
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"unknown artifact version {version}")
+
+
+@app.get("/genres")
+def get_genres(version: str | None = None):
+    """Per-track genre rollups, joined to the map on `track_uri`.
+
+    A separate endpoint on a separate version line, because genre labels decorate points
+    rather than place them: re-parsing genres must never imply a new embedding id. The
+    map renders without this — an unreachable genre artifact costs colour, not the map.
+
+    Returns the rollups only. `labels.json` (one row per track+label, with rank, scope
+    and confidence) stays artifact-side; it is what the pipeline queries, not what a
+    renderer needs per frame.
+    """
+    version = version or artifact.latest_genre_version()
+    if version is None:
+        raise HTTPException(
+            status_code=503,
+            detail="no genre artifact found — run: python -m pipeline.genres",
+        )
+    try:
+        return {
+            "version": version,
+            "manifest": artifact.load_genre_manifest(version),
+            "tracks": artifact.load_genre_tracks(version),
+        }
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"unknown genre version {version}")

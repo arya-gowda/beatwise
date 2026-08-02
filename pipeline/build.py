@@ -22,7 +22,7 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler
 from umap import UMAP
 
-from . import artifact, features
+from . import artifact, features, genres
 
 # Matches map_visualization_3d.py, reduced to 2 components. Settled by a 23-config x
 # 3-seed sweep (concept doc §9.2): genre purity across the entire grid spans
@@ -83,7 +83,11 @@ def build(source, user_id="local"):
             "added_at": str(r["Added At"]),
             "tempo": float(r["Tempo"]),
             "explicit": bool(r["Explicit"]),
-            "genres": [g.strip() for g in r["Genres"].split(",") if g.strip()],
+            # Convenience copy for hover, normalised by the one splitter that exists.
+            # The genre ARTIFACT is authoritative: rank, scope, confidence and the macro
+            # rollups live there and are versioned separately, because a genre change
+            # must never oblige a re-fit. See docs/decisions/0004-genre-artifact.md.
+            "genres": genres.normalise_labels(r["Genres"]),
         }
         for i, r in enumerate(df.to_dict("records"))
     ]
