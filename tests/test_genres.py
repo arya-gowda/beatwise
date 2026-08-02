@@ -14,7 +14,7 @@ from collections import Counter
 import pandas as pd
 import pytest
 
-from pipeline import artifact, features, genres
+from pipeline import artifact, features, genres, macro
 
 CSV = "Liked_Songs.csv"
 
@@ -36,11 +36,16 @@ FETCHED_AT = "2026-08-02T00:00:00+00:00"
 
 
 @pytest.fixture(scope="module")
-def parsed():
+def macro_map():
+    return macro.load()
+
+
+@pytest.fixture(scope="module")
+def parsed(macro_map):
     df, dropped = features.load_features(CSV)
     assert dropped == 0, f"{dropped} rows dropped for missing features; figures assume 0"
     rows = genres.parse_labels(df, FETCHED_AT)
-    return df, rows, genres.rollups(df, rows), genres.vocabulary(rows)
+    return df, rows, genres.rollups(df, rows, macro_map), genres.vocabulary(rows)
 
 
 # --- the counts ----------------------------------------------------------------------
@@ -186,7 +191,7 @@ def test_normalisation_handles_what_it_claims_to():
     assert genres.normalise_labels("rock, pop, rock") == ["rock", "pop"]
 
 
-def test_empty_genres_produce_zero_rows_not_an_empty_label():
+def test_empty_genres_produce_zero_rows_not_an_empty_label(macro_map):
     for value in ("", "   ", ",", ",,", " , ", None, float("nan")):
         assert genres.normalise_labels(value) == [], repr(value)
 
@@ -198,11 +203,15 @@ def test_empty_genres_produce_zero_rows_not_an_empty_label():
     assert [r["track_uri"] for r in rows] == ["spotify:track:c"]
     assert all(r["label"] for r in rows)
 
-    tracks = {t["track_uri"]: t for t in genres.rollups(df, rows)}
+    tracks = {t["track_uri"]: t for t in genres.rollups(df, rows, macro_map)}
     assert tracks["spotify:track:a"]["genre_label_count"] == 0
     assert tracks["spotify:track:a"]["genre_micro_all"] == []
     assert tracks["spotify:track:a"]["genre_micro_primary"] is None
     assert tracks["spotify:track:a"]["genre_status"] == genres.STATUS_UNLABELLED
+    # An unlabelled track has no macro either -- not a family that means "we don't know".
+    assert tracks["spotify:track:a"]["genre_macro_primary"] is None
+    assert tracks["spotify:track:a"]["genre_macro_set"] == []
+    assert tracks["spotify:track:a"]["genre_macro_count"] == 0
 
 
 def test_no_empty_label_survives_the_real_parse(parsed):

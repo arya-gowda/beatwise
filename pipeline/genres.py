@@ -28,12 +28,13 @@ import re
 import unicodedata
 from datetime import datetime, timezone
 
-from . import artifact, features
+from . import artifact, features, macro
 
 # Bump when the emitted row shape or the normalisation changes. Recorded in the manifest
 # and folded into the version digest, so artifacts built under different rules are
 # distinguishable rather than silently comparable.
-SCHEMA_VERSION = 1
+# 2: rollups gained the P1-11 macro fields.
+SCHEMA_VERSION = 2
 
 # The separator for THIS COLUMN. See the module docstring before reusing it anywhere.
 SEPARATOR = ","
@@ -54,7 +55,7 @@ LABEL_FIELDS = ("track_uri", "label", "rank", "source", "scope", "confidence", "
 ROLLUP_FIELDS = (
     "track_uri", "genre_micro_primary", "genre_micro_all",
     "genre_label_count", "genre_status",
-)
+) + macro.MACRO_FIELDS
 
 # Track scope beats artist scope in primary selection (§8.6). Phase 1 emits artist only.
 _SCOPE_PRECEDENCE = {SCOPE_TRACK: 0, SCOPE_ARTIST: 1}
@@ -158,12 +159,33 @@ def select_primary(rows):
     return min(rows, key=primary_sort_key)["label"] if rows else None
 
 
-def rollups(df, rows):
+def select_macros(rows, macro_map):
+    """(primary macro, ordered macro set) for one track, per §8.6.
+
+    Deliberately the SAME chain as the micro primary: sort by primary_sort_key, take the
+    winning row's family. Reusing the ordering rather than inventing a macro-specific one
+    (most-labels-wins, say) keeps two guarantees — the macro primary always agrees with
+    the micro primary, and adding a track-scope or sub-1.00 source in tier 2 changes both
+    at once instead of only one of them.
+
+    The set preserves that same order and deduplicates, so it reads highest-precedence
+    first and is stable across rebuilds.
+    """
+    ordered = sorted(rows, key=primary_sort_key)
+    macros = list(dict.fromkeys(macro_map.macro(r["label"]) for r in ordered))
+    return (macros[0] if macros else None), macros
+
+
+def rollups(df, rows, macro_map):
     """Denormalised per-track view of the label table.
 
     Kept derived rather than authoritative: labels.json is the source of truth and this
     is a materialised join, so P1-12 can colour 2,389 points without grouping 2,404 rows
     in the browser on every render. `genre_micro_all` is ordered by rank.
+
+    `macro_map` is required rather than optional. A default would make it possible to
+    write rollups with no macro data at all and have them look complete; the macro fields
+    are part of the schema now, so producing them is not something a caller opts into.
     """
     by_track = {}
     for row in rows:
@@ -172,12 +194,16 @@ def rollups(df, rows):
     out = []
     for uri in df["Track URI"]:
         track_rows = sorted(by_track.get(uri, []), key=primary_sort_key)
+        macro_primary, macro_set = select_macros(track_rows, macro_map)
         out.append({
             "track_uri": uri,
             "genre_micro_primary": select_primary(track_rows),
             "genre_micro_all": [r["label"] for r in track_rows],
             "genre_label_count": len(track_rows),
             "genre_status": STATUS_NATIVE if track_rows else STATUS_UNLABELLED,
+            "genre_macro_primary": macro_primary,
+            "genre_macro_set": macro_set,
+            "genre_macro_count": len(macro_set),
         })
     return out
 
@@ -201,13 +227,18 @@ def vocabulary(rows):
     return sorted(stats.values(), key=lambda e: (-e["track_count"], e["label"]))
 
 
-def version_id(csv_hash):
+def version_id(csv_hash, macro_hash):
     """Timestamp for ordering, config digest for identity — same shape as the embedding
     version so the two are visibly the same kind of thing, and deliberately NOT the same
-    value so a genre rebuild never implies the map moved."""
+    value so a genre rebuild never implies the map moved.
+
+    The curated table's hash is in the digest because it is an INPUT: recurating changes
+    what every track's colour means, and two artifacts built from the same CSV under
+    different taxonomies must not share an id."""
     config = json.dumps(
         {"schema": SCHEMA_VERSION, "separator": SEPARATOR, "fields": LABEL_FIELDS,
-         "source": SOURCE_CSV, "scope": SCOPE_ARTIST, "csv": csv_hash},
+         "source": SOURCE_CSV, "scope": SCOPE_ARTIST, "csv": csv_hash,
+         "macro_map": macro_hash},
         sort_keys=True,
     )
     digest = hashlib.sha256(config.encode()).hexdigest()[:8]
@@ -215,10 +246,31 @@ def version_id(csv_hash):
     return f"{stamp}-{digest}", digest
 
 
-def build(source, user_id="local"):
+def macro_counts(tracks):
+    """Per-family track counts, both ways.
+
+    `primary` is what the map will colour by; `in_set` is how many tracks touch the
+    family at all. Reported together because they answer different questions and the gap
+    between them IS the multi-macro population — 42 primary vs 75 in-set for jazz says
+    half the jazz in this library arrives as someone else's second label.
+    """
+    primary, in_set = {}, {}
+    for track in tracks:
+        if track["genre_macro_primary"] is None:
+            continue
+        primary[track["genre_macro_primary"]] = \
+            primary.get(track["genre_macro_primary"], 0) + 1
+        for family in track["genre_macro_set"]:
+            in_set[family] = in_set.get(family, 0) + 1
+    return (dict(sorted(primary.items(), key=lambda kv: (-kv[1], kv[0]))),
+            dict(sorted(in_set.items(), key=lambda kv: (-kv[1], kv[0]))))
+
+
+def build(source, user_id="local", macro_map_path=macro.MAP_PATH):
     df, dropped = features.load_features(source)
     csv_hash = features.source_hash(source)
-    version, digest = version_id(csv_hash)
+    macro_map = macro.load(macro_map_path)
+    version, digest = version_id(csv_hash, macro_map.sha256)
 
     # For source=csv there is no fetch event to timestamp: the export carries no date and
     # Spotify's own labelling time is unknowable. This is when Beatwise obtained the
@@ -227,12 +279,19 @@ def build(source, user_id="local"):
     fetched_at = datetime.now(timezone.utc).isoformat()
 
     rows = parse_labels(df, fetched_at)
-    tracks = rollups(df, rows)
+    tracks = rollups(df, rows, macro_map)
     vocab = vocabulary(rows)
 
     labelled = sum(1 for t in tracks if t["genre_status"] == STATUS_NATIVE)
     unlabelled = len(tracks) - labelled
     singletons = sum(1 for v in vocab if v["track_count"] == 1)
+
+    examples = {}
+    for row in rows:
+        examples.setdefault(row["label"], []).append(row["track_uri"])
+    queue = macro.review_queue(vocab, macro_map, examples)
+    primary_counts, set_counts = macro_counts(tracks)
+    multi = sum(1 for t in tracks if t["genre_macro_count"] > 1)
 
     manifest = {
         "genre_version": version,
@@ -254,15 +313,42 @@ def build(source, user_id="local"):
         "n_unique_labels": len(vocab),
         "n_singleton_labels": singletons,
         "coverage": round(labelled / len(tracks), 4) if tracks else 0.0,
+
+        # --- P1-11 macro layer ---
+        "macro_map": str(macro_map.path),
+        "macro_map_sha256": macro_map.sha256,      # the input that the digest above pins
+        "macro_map_schema_version": macro_map.schema_version,
+        "macro_map_curated_at": macro_map.curated_at,
+        "macro_fields": list(macro.MACRO_FIELDS),
+        "macro_families": [
+            {"id": f["id"], "name": f["name"]} for f in macro_map.families
+        ],
+        "n_macro_families": len(macro_map.families),
+        "n_mapped_labels": len(macro_map.mapping),
+        "n_unreviewed_labels": queue["n_unreviewed_labels"],
+        "n_tracks_multi_macro": multi,
+        "macro_primary_counts": primary_counts,
+        "macro_set_counts": set_counts,
+
         "fetched_at": fetched_at,
         "built_at": datetime.now(timezone.utc).isoformat(),
     }
 
-    out = artifact.write_genres(version, manifest, rows, tracks, vocab)
+    out = artifact.write_genres(version, manifest, rows, tracks, vocab, queue)
     print(f"wrote {out}")
     print(f"  {len(rows)} label instances across {labelled} tracks "
           f"({unlabelled} unlabelled, {manifest['coverage']:.0%} coverage)")
     print(f"  {len(vocab)} unique labels, {singletons} singletons")
+    print(f"  {len(macro_map.families)} macro families, {multi} tracks span more than one")
+    for family, count in primary_counts.items():
+        print(f"    {family:16s} {count:5d} primary  {set_counts.get(family, 0):5d} in set")
+    if queue["n_unreviewed_labels"]:
+        # Loud, but not fatal: a new export arriving with three new tokens should still
+        # produce a map. The queue file and this line are how it stops being silent, and
+        # tests/test_macro_genres.py fails while it is non-empty.
+        print(f"  !! {queue['n_unreviewed_labels']} UNREVIEWED labels -> "
+              f"{out / artifact.MACRO_REVIEW}")
+        print(f"  !! curate them into {macro_map.path}; there is no `Other` family")
     return version
 
 
@@ -270,8 +356,10 @@ def main():
     ap = argparse.ArgumentParser(description="Parse CSV genres into the per-label schema")
     ap.add_argument("source", nargs="?", default="Liked_Songs.csv")
     ap.add_argument("--user-id", default="local")
+    ap.add_argument("--macro-map", default=macro.MAP_PATH,
+                    help="hand-curated micro->macro table (P1-11)")
     args = ap.parse_args()
-    build(args.source, user_id=args.user_id)
+    build(args.source, user_id=args.user_id, macro_map_path=args.macro_map)
 
 
 if __name__ == "__main__":

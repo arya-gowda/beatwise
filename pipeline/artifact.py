@@ -21,6 +21,10 @@ GENRES = "genres"
 LABELS = "labels.json"
 TRACK_GENRES = "tracks.json"
 VOCABULARY = "vocabulary.json"
+# Tokens the P1-11 curation pass has not seen. Derived, so it belongs here rather than in
+# data/ -- unlike the map it is generated fresh on every build. The map itself is source
+# and lives in data/genre_macro_map.json; see pipeline/macro.py.
+MACRO_REVIEW = "macro_review_queue.json"
 
 
 def artifact_dir(version):
@@ -109,7 +113,13 @@ def load_genre_vocabulary(version):
     return _read(version, VOCABULARY)
 
 
-def write_genres(version, manifest, labels, tracks, vocabulary):
+def load_macro_review(version):
+    """Tokens with no row in the curated macro table. Empty file when there are none —
+    a missing file cannot be told apart from a build that never checked."""
+    return _read(version, MACRO_REVIEW)
+
+
+def write_genres(version, manifest, labels, tracks, vocabulary, macro_review):
     out = genre_dir(version)
     out.mkdir(parents=True, exist_ok=True)
     with open(out / MANIFEST, "w") as fh:
@@ -123,4 +133,7 @@ def write_genres(version, manifest, labels, tracks, vocabulary):
     # Indented: this one is read by a human during P1-11's curation pass.
     with open(out / VOCABULARY, "w") as fh:
         json.dump(vocabulary, fh, indent=2)
+    # Indented for the same reason -- it exists to be acted on by a person.
+    with open(out / MACRO_REVIEW, "w") as fh:
+        json.dump(macro_review, fh, indent=2, ensure_ascii=False)
     return out
