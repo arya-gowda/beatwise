@@ -41,6 +41,30 @@ restart; this file does. Re-create tasks from these entries after restarting.
 - Committed: `a85bbc8`, `b9d5354`, `2d7351d`, `cfd34fc`, `a300f33`, `f3b4d82`, `8622548`,
   `c9379d7`. Suite green at 55 tests.
 
+- **P1-09 (colour-by) — DONE, committed `2a6b227`.** Five lenses. Popularity stays linear
+  so the prototype view survives; year and date-added are quantile because a linear ramp
+  put adjacent deciles CIE76 3–6 apart, invisible at 2–3px. Dimming now contracts toward
+  grey rather than replacing hue, so colour survives under a selection.
+- **P1-13 (genre gap) — DONE, committed `639c0e3`. THE RESULT CHANGES THE ROADMAP, see
+  below.**
+
+**⚠ SPOTIFY NO LONGER SENDS ARTIST GENRES TO THIS APP AT ALL.** The `genres` key is
+ABSENT from the artist object — not empty — along with `popularity` and `followers`.
+Independently reconfirmed outside the diagnostic. Full record in
+`docs/findings/p1-13-genre-gap-at-source.md`.
+
+- §8's premise is neither confirmed nor refuted. It is now UNFALSIFIABLE through the Web
+  API and stays an assumption.
+- **Tier 2 of the §8 cascade is IMPOSSIBLE, not unnecessary.** Tiers 3–4 are the only
+  remaining routes above 52.41% coverage. Re-plan the cascade before building any of it.
+- **`Liked_Songs.csv` is now a genre ARCHIVE, not merely a feature substrate.** The
+  `Genres` column cannot be refreshed or topped up from Spotify, and a fresh export is not
+  guaranteed parity with today's 2,404 label instances. DO NOT REGENERATE IT CASUALLY.
+- A positive control is the only reason this was caught — without it the run reports
+  "0 of 100, gap confirmed empty" and is wrong, because "these artists have no genres" and
+  "the field returns nothing for anybody" are the same measurement. Keep positive controls
+  in any future source-availability check.
+
 **NEXT: P1-08 is the gate, and it is not a code ticket.** Everything Phase 1 needs to run
 it now exists. Lasso → playlist works end to end. The remaining question is whether the
 regions are coherent to the ear, which only listening answers.
