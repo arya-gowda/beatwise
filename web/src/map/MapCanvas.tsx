@@ -8,13 +8,13 @@ import {
 } from '@deck.gl/core'
 import { ScatterplotLayer } from '@deck.gl/layers'
 
-import { bounds, type Point } from './useMapData'
-import Tooltip from './Tooltip'
+import { bounds, type GenreIndex, type Point } from './useMapData'
+import Tooltip, { type GenreBadge } from './Tooltip'
 import SelectionPanel from './SelectionPanel'
 import Legend from './Legend'
 // Every colour the map draws comes from here, including the interaction states -- one
 // place decides what a dot looks like, so the legend and the layer cannot disagree.
-import { buildScale, pointColour, SELECTED, type ColourMode } from './colour'
+import { buildScale, inFocus, pointColour, SELECTED, type ColourMode } from './colour'
 import {
   appendVertex,
   MIN_DRAG_PX,
@@ -64,9 +64,12 @@ type Props = {
    *  map that produced it. A route is only reproducible if you know which space it ran
    *  through. */
   version: string
+  /** The genre artifact, or null when it could not be loaded. Null costs the genre colour
+   *  mode and nothing else — see docs/decisions/0004-genre-artifact.md. */
+  genre: GenreIndex | null
 }
 
-export default function MapCanvas({ points, width, height, version }: Props) {
+export default function MapCanvas({ points, width, height, version, genre }: Props) {
   const home = useMemo(
     () => fitView(points, width, height),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -79,8 +82,22 @@ export default function MapCanvas({ points, width, height, version }: Props) {
   // nothing else: switching modes cannot move the camera or change the selection, because
   // neither `viewState` nor `selected` is derived from it.
   const [mode, setMode] = useState<ColourMode>('off')
-  const scale = useMemo(() => buildScale(points, mode), [points, mode])
+  const scale = useMemo(() => buildScale(points, mode, genre), [points, mode, genre])
   const colouring = scale.kind !== 'off'
+
+  // Legend focus: one category isolated, everything else receded. Two pieces of state
+  // rather than one, because hovering a row must PREVIEW without discarding what is
+  // pinned -- moving the mouse off the row goes back to the pinned family, not to nothing.
+  const [pinned, setPinned] = useState<string | null>(null)
+  const [preview, setPreview] = useState<string | null>(null)
+  const focus = preview ?? pinned
+  // A focus key belongs to one scale. Carrying `rock` into the explicit mode would match
+  // nothing and silently grey the entire map, so switching lens drops it. Pan, zoom and
+  // the selection are untouched -- P1-09's criterion still holds.
+  useEffect(() => {
+    setPinned(null)
+    setPreview(null)
+  }, [mode])
 
   // Armed by the button; Shift is the transient shortcut for the same thing, so the
   // pointer can select without leaving navigate mode.
@@ -156,6 +173,10 @@ export default function MapCanvas({ points, width, height, version }: Props) {
         cancelDrag()
         setArmed(false)
         clearSelection()
+        // Escape already means "put the map back". A pinned legend category greys most of
+        // the library, so it is exactly the kind of state you want one key to undo.
+        setPinned(null)
+        setPreview(null)
       }
     }
     const up = (e: KeyboardEvent) => e.key === 'Shift' && setShiftHeld(false)
@@ -243,20 +264,53 @@ export default function MapCanvas({ points, width, height, version }: Props) {
     setArmed(false)
   }
 
+  /**
+   * Draw order, and the reason it is not just `points`.
+   *
+   * deck.gl draws a ScatterplotLayer in data order, so the last point wins where two
+   * overlap — and a measured 0.256 of this cloud is overplotted at the default zoom. With
+   * a seven-track family isolated, one or two of those seven sitting UNDER a dimmed
+   * neighbour is not a rounding error, it is a fifth of the thing you asked to see. So
+   * while a focus is active the in-focus points are moved to the end.
+   *
+   * A partition, not a sort: O(n) and stable, so nothing else about the drawing changes.
+   * At the discovery corpus this is one pass over a million points per focus change, which
+   * is fine; what would not be fine is a comparison sort, which is why this is not one.
+   */
+  const ordered = useMemo(() => {
+    if (focus === null) return points
+    const out: Point[] = []
+    const lit: Point[] = []
+    for (const p of points) (inFocus(scale, p, focus) ? lit : out).push(p)
+    return out.concat(lit)
+  }, [points, scale, focus])
+
   const layer = new ScatterplotLayer<Point>({
     id: 'tracks',
-    data: points,
+    data: ordered,
     getPosition: (d) => [d.x, d.y],
     getFillColor: (d) =>
       pointColour(scale, d, {
         hovered: hovered?.object?.uri === d.uri,
         selected: selected.has(d.uri),
         anySelected: selected.size > 0,
+        focus,
       }),
     // A selected point sits a little larger as well as brighter. In the dense core colour
     // alone is not enough to pick a selection out of its neighbours. Under a colour mode
     // it needs slightly more room, because the ring below eats into the fill.
-    getRadius: (d) => (selected.has(d.uri) ? (colouring ? 3.4 : 3) : 2),
+    //
+    // A focused point grows too, and that is not decoration: reggae is seven dots in 2,389.
+    // Dimming the other 2,382 finds them; the extra pixel is what makes them clickable once
+    // found. Selection still outranks focus, here as in pointColour.
+    getRadius: (d) =>
+      selected.has(d.uri)
+        ? colouring
+          ? 3.4
+          : 3
+        : focus !== null && inFocus(scale, d, focus)
+          ? 3.2
+          : 2,
     // Radius in pixels, not world units, so points stay legible at every zoom rather
     // than dissolving as you pull back.
     radiusUnits: 'pixels',
@@ -280,8 +334,8 @@ export default function MapCanvas({ points, width, height, version }: Props) {
     onHover: (info: PickingInfo<Point>) => setHovered(info.object ? info : null),
     // Miss one of these and the map keeps the colours of the previous mode.
     updateTriggers: {
-      getFillColor: [hovered?.object?.uri ?? null, selected, mode],
-      getRadius: [selected, mode],
+      getFillColor: [hovered?.object?.uri ?? null, selected, mode, focus],
+      getRadius: [selected, mode, focus],
       getLineWidth: [selected, mode],
     },
   })
@@ -291,6 +345,21 @@ export default function MapCanvas({ points, width, height, version }: Props) {
   // affordance exists to prevent, and it is invisible until you pan without zooming.
   const moved = hasMoved(viewState, home)
   const chosen = useMemo(() => orderByCentroid(points, selected), [points, selected])
+
+  // Resolved here so the tooltip stays a renderer: it is handed names and colours, not an
+  // index to look things up in. Only under the genre mode -- the card that identifies a
+  // track under a tempo ramp has no business listing families.
+  const hoveredGenres: GenreBadge[] | null = useMemo(() => {
+    if (mode !== 'genre' || !genre || !hovered?.object) return null
+    const g = genre.byUri.get(hovered.object.uri)
+    const names = new Map(genre.manifest.macro_families.map((f) => [f.id, f.name]))
+    // `genre_macro_set` is primary-first and already deduplicated by the pipeline.
+    return (g?.genre_macro_set ?? []).map((id) => ({
+      key: id,
+      label: names.get(id) ?? id,
+      colour: scale.kind === 'categorical' ? scale.colourOf(id) : [255, 255, 255],
+    }))
+  }, [mode, genre, hovered, scale])
 
   return (
     <div
@@ -345,13 +414,21 @@ export default function MapCanvas({ points, width, height, version }: Props) {
         </svg>
       )}
 
-      {hovered?.object && !lassoMode && <Tooltip info={hovered} />}
+      {hovered?.object && !lassoMode && <Tooltip info={hovered} genres={hoveredGenres} />}
 
       {/* `chosen`, not anything the panel renders: the panel caps its list at 300 rows
           and the export must see the whole selection. */}
       <SelectionPanel tracks={chosen} onClear={clearSelection} embeddingVersion={version} />
 
-      <Legend mode={mode} scale={scale} onChange={setMode} />
+      <Legend
+        mode={mode}
+        scale={scale}
+        onChange={setMode}
+        hasGenre={genre !== null}
+        pinned={pinned}
+        onPin={setPinned}
+        onPreview={setPreview}
+      />
 
       <div className="controls">
         <button

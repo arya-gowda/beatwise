@@ -86,7 +86,14 @@ body {
   border-color: rgba(122, 214, 255, 0.5);
 }
 
-.legend__body { margin-top: 0.5rem; }
+/* A thirteen-row genre key plus a coverage note is tall. On a short window the block
+   scrolls rather than growing off the top of the screen -- and the key scrolls WITH its
+   note, so the coverage figure can never be the part that gets cut. */
+.legend__body {
+  margin-top: 0.5rem;
+  max-height: calc(100vh - 9rem);
+  overflow-y: auto;
+}
 
 .legend__blurb {
   margin: 0 0 0.4rem;
@@ -139,11 +146,46 @@ body {
   list-style: none;
 }
 
-.legend__keys li {
+/* Every key is a control -- hover previews, click pins. It is a button rather than a row
+   with a handler so it is reachable by keyboard and announces its pressed state, which is
+   also the only route to a seven-track family for someone who cannot separate its hue. */
+.legend__key {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.45rem;
-  padding: 0.12rem 0;
+  width: 100%;
+  padding: 0.14rem 0.25rem;
+  font: inherit;
+  font-size: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.legend__key:hover { background: rgba(255, 255, 255, 0.07); }
+
+.legend__key--on {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+/* The distribution, behind the row. 320 against 7 is the whole story of this taxonomy's
+   tail and it should not have to be read off twelve numbers to be felt. Low alpha and
+   behind the text on purpose: context, not a chart. */
+.legend__bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  opacity: 0.16;
+  border-radius: 3px;
+  pointer-events: none;
 }
 
 .legend__swatch {
@@ -153,11 +195,47 @@ body {
   flex: none;
 }
 
+.legend__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .legend__count {
   margin-left: auto;
+  padding-left: 0.4rem;
   opacity: 0.5;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
+
+/* Tracks that carry the family without being coloured by it. Dimmer than the primary
+   count: it is a second, weaker fact about the same row. */
+.legend__also { opacity: 0.65; }
+
+/* Absence is not a category. It sits below a rule, in a quieter type, so the eye reads
+   twelve genres and then a footnote rather than thirteen genres. */
+.legend__key--absent {
+  margin-top: 0.28rem;
+  padding-top: 0.28rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.legend__key--absent .legend__key { opacity: 0.62; }
+
+.legend__note--live { opacity: 0.8; }
+
+.legend__link {
+  font: inherit;
+  font-size: inherit;
+  color: #9be2ff;
+  background: none;
+  border: none;
+  padding: 0 0 0 0.3rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 
 /* Hover card. max-width is load-bearing: the real library has titles long enough to
    push an unclamped card off-screen. */
@@ -190,6 +268,39 @@ body {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* Every macro family the hovered track touches, primary first. A dot is one colour and a
+   track can be three families; this is where the other two live. */
+.tooltip__genres {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.5rem;
+  margin-top: 0.3rem;
+  padding-top: 0.28rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.72rem;
+  opacity: 0.85;
+}
+
+.tooltip__genre {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  white-space: nowrap;
+}
+
+.tooltip__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.tooltip__primary { opacity: 0.5; }
+
+/* Said out loud rather than left blank. An empty space here would read as a bug, and the
+   1,137 tracks in this state are the single largest fact about the genre layer. */
+.tooltip__genres--none { opacity: 0.5; font-style: italic; }
 
 .frame { position: absolute; inset: 0; }
 

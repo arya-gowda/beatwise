@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import MapCanvas from './map/MapCanvas'
-import { useMapData } from './map/useMapData'
+import { useGenreData, useMapData } from './map/useMapData'
 import './App.css'
 
 function useViewport() {
@@ -15,6 +15,11 @@ function useViewport() {
 
 export default function App() {
   const map = useMapData()
+  // Deliberately not awaited alongside the map. The genre artifact is a separate build on
+  // a separate version line, and the map must render whether or not it exists -- a genre
+  // that can block the map is a genre that can hold the whole product hostage to a
+  // taxonomy edit. Called before the early returns below because hooks are unconditional.
+  const genre = useGenreData()
   const { width, height } = useViewport()
 
   if (map.state === 'loading') {
@@ -37,7 +42,13 @@ export default function App() {
   const { data } = map
   return (
     <>
-      <MapCanvas points={data.points} width={width} height={height} version={data.version} />
+      <MapCanvas
+        points={data.points}
+        width={width}
+        height={height}
+        version={data.version}
+        genre={genre.state === 'ready' ? genre.index : null}
+      />
       <div className="readout">
         {data.points.length.toLocaleString()} tracks · {data.version}
       </div>
