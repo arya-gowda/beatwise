@@ -47,6 +47,22 @@ restart; this file does. Re-create tasks from these entries after restarting.
   grey rather than replacing hue, so colour survives under a selection.
 - **P1-13 (genre gap) — DONE, committed `639c0e3`. THE RESULT CHANGES THE ROADMAP, see
   below.**
+- **P1-12 (colour by macro genre) — DONE, committed `e8a6bee`. LAST CODE TICKET IN PHASE
+  1.** Coverage stated as 52.41% to two decimals rather than rounded; unlabelled is an
+  explicit `absence: true` legend entry reading `no genre labels`, not a 13th family. The
+  thin tail was NOT merged: every legend row carries its count, sorted largest-first, and
+  is click-to-isolate — which is also the red-green CVD accommodation, since isolating a
+  family never requires telling its hue from its neighbour's.
+  **`colour.ts` contained a NUL byte inside a string literal** (`NO_GENRE = '\0none'`),
+  which made the file classify as binary — `grep` and `file` skipped all 758 lines
+  silently, so three attempts to check the criteria came back empty against a file that
+  was fine. Worse, the invisible byte was load-bearing: it was the mechanism satisfying
+  `test_the_unlabelled_key_cannot_collide_with_a_family`, and stripping it turned the
+  suite red. Replaced with `'(unlabelled)'`, where the parentheses do the same job
+  visibly. Suite green at 104.
+
+**ALL TWELVE PHASE 1 CODE TICKETS ARE DONE.** Only P1-14 (optional, gate-independent)
+remains unbuilt.
 
 **⚠ SPOTIFY NO LONGER SENDS ARTIST GENRES TO THIS APP AT ALL.** The `genres` key is
 ABSENT from the artist object — not empty — along with `popularity` and `followers`.
